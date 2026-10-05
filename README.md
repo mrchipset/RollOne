@@ -8,6 +8,20 @@
 - 颜色由 `src/config/colors.ts` 数据驱动，增删颜色只改这一处
 - 纯前端、无后端、无 PWA，除 React 外**零运行时依赖**
 
+需求演变与开发指令记录在 [`prompt.md`](./prompt.md)。
+
+## 演示
+<p align="center">
+  <video src="resources/demo.mp4" width="300" controls muted loop playsinline></video>
+</p>
+
+- `resources/screenshot.png` —— 界面截图，499×944
+- `resources/demo.mp4` —— 演示视频，16 秒 / 496×1080 / 30fps
+
+> GitHub 的 Markdown 会过滤 `<video>` 标签，所以在 GitHub 上请直接点开 `resources/demo.mp4`；
+> VS Code、GitLab、Gitea 的 Markdown 预览里可以直接播放。
+> ⚠️ 视频是 **HEVC（H.265）** 编码，Chrome / Firefox 播不了，只有 Safari 能直接播——见「已知问题」。
+
 ## 常用命令
 
 ```bash
@@ -17,6 +31,48 @@ pnpm test     # 运行 Vitest 单测
 pnpm build    # tsc -b + vite build
 pnpm lint     # oxlint
 ```
+
+单跑某个测试文件：
+
+```bash
+pnpm exec vitest run src/lib/cube.test.ts
+```
+
+## 项目结构
+
+```
+src/
+  config/colors.ts        结果集配置：唯一需要改动的地方（颜色 / 问号）
+  lib/
+    random.ts             拒绝采样 randBelow —— 等概率的根基
+    roll.ts               buildFaces / choice / rollFace / faceIndexToLandingEuler 的调用方
+    seededRandom.ts       mix32 混合种子 + mulberry32 确定性 PRNG
+    slingshot.ts          拖拽位移 → 力度 / 发射方向 / 滚动轴（纯几何）
+    cube.ts               立方体槽位、面摆放、落地姿态、transform 拼装（纯几何）
+    tumble.ts             力度 → 时长 / 圈数 / 距离 + 缓动常量
+    animationPreference.ts 动画开关的持久化与默认值
+  components/
+    Dice3D.tsx            CSS 3D 立方体（纯展示，姿态由外部传入的 transform 决定）
+    AnimationToggle.tsx   ARIA switch
+  App.tsx                 状态机：拖拽 → 发射 → 翻滚 → 回落 → 定格
+```
+
+设计上刻意让 `lib/` 里全是**纯函数**：几何、抽样、种子、时序都不依赖 DOM，
+因此可以脱离浏览器直接单测。`App.tsx` 只负责把这些纯函数接成状态机和定时器。
+
+## 测试
+
+11 个文件、122 个用例，覆盖四类：
+
+| 类别 | 例子 |
+| --- | --- |
+| 概率正确性 | 拒绝采样穷举验证无偏、种子化抽取的等概率与确定性 |
+| 几何正确性 | 六个槽位落地后法向等于桌面法线、面内文字正立、面摆放与法向量表一致 |
+| 动画约束 | 峰值角速度上限、两段缓动在衔接处速度都为 0、上调落定时长不变 |
+| 组件行为 | 拖拽跟手（含俯视倾角补偿）、力度不足不触发、关闭动画立即出结果 |
+
+几何与动画那两类是**回归安全网**：它们守着的都是"错了也几乎看不出来"的东西
+（朝上的面和播报结果不一致、转速过高看久了头晕），改参数后务必全跑一遍。
 
 ## 操作
 
@@ -210,8 +266,37 @@ spins    = 2                                          // 固定 2 圈
 - `label` 是结果播报里显示的中文名（`aria-live` 会念出来，也是色盲用户唯一的区分手段）
 - `color` 必须是 `#RGB` / `#RRGGBB` 等合法十六进制颜色
 
-默认 5 色是从实体教具照片里做像素采样得到的（受光面众数）：
-红 `#BB3A3C`、橙 `#AD692A`、黄 `#EACB26`、绿 `#335D2C`、紫 `#7F7099`。
+默认调色板见 `src/config/colors.ts` 里的 `COLORS`。这里刻意不复制具体的十六进制值——
+调色板会被反复微调，写死在文档里必然过期。
+
+## 浏览器与设备要求
+
+- 需要 `transform-style: preserve-3d` 与 `perspective`：现代 Chrome / Safari / Firefox / Edge 都支持，桌面与移动端一致。
+- 触控用 Pointer Events + `touch-action: none`，拖拽时不会带动页面滚动。
+- `setPointerCapture` 是渐进增强（代码里写作 `?.()` 可选调用）——jsdom 未实现它，硬调用会让组件测试直接抛错。
+- 无 `crypto.getRandomValues` 的运行时回退到 `Math.random`。
+
+## 已知问题
+
+**弱力度反而转得更快。** 圈数固定 2 圈，而起飞段时长随力度增长，于是力度越小转速越高
+（当前系数下最小力度约 4.03 圈/秒，满力度约 2.84）。两条修法：给 `flyMs` 加下限，
+或让 `spins` 随力度递减。
+
+**`TIME_SCALE` 不是"全局"缩放。** 它只作用于起飞段，回落段不吃缩放，所以改它会改变
+两段的**比例**；只有 `TIME_SCALE = 1` 时两段才严格按 `FLY_SHARE` 划分。若这是有意的，
+保持现状即可；若想恢复全局语义，需要给 `settleMs` 补上乘数。
+
+**演示视频是 HEVC（H.265）编码。** Chrome / Firefox 不支持这个编码，只有 Safari 能播，
+而 GitHub 又会过滤 `<video>` 标签——两者叠加的结果是：多数人点开 `resources/demo.mp4`
+只能下载、不能直接看。两条修法：
+
+```bash
+# 转成浏览器通吃的 H.264（体积会涨一些，可加 -crf 28 压一压）
+ffmpeg -i resources/demo.mp4 -c:v libx264 -pix_fmt yuv420p -movflags +faststart resources/demo-h264.mp4
+```
+
+或者截取前几秒做成 GIF——GIF 到处都能内联播放，但 16 秒的视频转 GIF 会有好几 MB，
+建议只截一段关键动作。
 
 ## 技术栈
 

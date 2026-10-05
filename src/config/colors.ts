@@ -34,13 +34,14 @@ const COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-f
  * 红=梯形 #BB3A3C / 橙=六边形 #AD692A / 黄=菱形 #EACB26 / 绿=圆片 #335D2C。
  * 紫色半圆片有较大自遮挡侧面（44% 像素落在 #564569），故取其受光面 #9D92AD
  * 与暗面之间的偏暗中间值 #7F7099 作为代表色。
+ * 已手动修改
  */
 export const COLORS: ColorDef[] = [
-  { id: 'red', label: '红色', color: '#bb3a3c' },
-  { id: 'orange', label: '橙色', color: '#ad692a' },
-  { id: 'yellow', label: '黄色', color: '#eacb26' },
-  { id: 'green', label: '绿色', color: '#335d2c' },
-  { id: 'purple', label: '紫色', color: '#7f7099' },
+  { id: 'red', label: '红色', color: '#e91417' },
+  { id: 'orange', label: '橙色', color: '#fc7e00' },
+  { id: 'yellow', label: '黄色', color: '#ffd500' },
+  { id: 'green', label: '绿色', color: '#22921f' },
+  { id: 'purple', label: '紫色', color: '#9f51d6' },
 ]
 
 /** 校验颜色配置，配置非法时立即抛错，避免静默产生错误的概率分布。 */
