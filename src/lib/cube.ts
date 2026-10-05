@@ -108,17 +108,39 @@ export function faceIndexToLandingEuler(index: number): Euler {
   return { ...LANDING[CUBE_SLOTS[index]] }
 }
 
-function round(value: number): number {
-  return Math.round(value * 100) / 100
+function round(value: number, digits = 2): number {
+  const factor = 10 ** digits
+  return Math.round(value * factor) / factor
 }
 
-/** 生成骰子的 `transform` 字符串；位移在前，旋转三轴顺序固定，便于 CSS 逐分量插值。 */
+/**
+ * 滚动旋转：绕水平面内的一条单位轴累计旋转。
+ *
+ * 静止时 `deg` 恒为 360 的整数倍，此时 `rotate3d` 等效于没有旋转，
+ * 所以换轴、清零都不会有视觉跳变。
+ */
+export type RollSpin = {
+  /** 滚动轴的水平分量（单位向量；z 分量恒为 0） */
+  ax: number
+  ay: number
+  /** 累计旋转角度（度） */
+  deg: number
+}
+
+/**
+ * 生成骰子的 `transform` 字符串。
+ *
+ * 函数列表顺序在两段动画里必须完全一致，CSS 才能逐分量插值：
+ * `rotate3d` 负责翻滚（轴由投掷方向决定），后面三项负责落地姿态。
+ */
 export function cubeTransform(
   translate: { x: number; y: number; z: number },
   euler: Euler,
+  spin: RollSpin,
 ): string {
   return (
     `translate3d(${round(translate.x)}px, ${round(translate.y)}px, ${round(translate.z)}px) ` +
+    `rotate3d(${round(spin.ax, 6)}, ${round(spin.ay, 6)}, 0, ${round(spin.deg)}deg) ` +
     `rotateY(${round(euler.ry)}deg) rotateX(${round(euler.rx)}deg) rotateZ(${round(euler.rz)}deg)`
   )
 }

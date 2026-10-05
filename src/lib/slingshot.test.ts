@@ -8,6 +8,7 @@ import {
   isThrowable,
   launchDirection,
   pullFromDrag,
+  rollAxis,
 } from './slingshot'
 
 describe('pullFromDrag', () => {
@@ -80,3 +81,52 @@ describe('常量', () => {
   })
 })
 
+describe('rollAxis', () => {
+  it('恒为单位向量', () => {
+    for (const pull of [
+      { x: 1, y: 0 },
+      { x: 0, y: 1 },
+      { x: -3, y: 4 },
+      { x: 0.5, y: -0.5 },
+    ]) {
+      const { ax, ay } = rollAxis(pull)
+      expect(Math.hypot(ax, ay)).toBeCloseTo(1, 9)
+    }
+  })
+
+  it('零位移时退化为绕 +X 轴（对应"朝正上方发射"）', () => {
+    expect(rollAxis({ x: 0, y: 0 })).toEqual({ ax: 1, ay: 0 })
+  })
+
+  it('滚动轴与发射方向垂直（纯滚动的必要条件）', () => {
+    for (const pull of [
+      { x: 0, y: 120 },
+      { x: -140, y: 0 },
+      { x: 90, y: -90 },
+    ]) {
+      const dir = launchDirection(pull)
+      const { ax, ay } = rollAxis(pull)
+      // 与发射方向点乘为 0
+      expect(ax * dir.x + ay * dir.y).toBeCloseTo(0, 9)
+    }
+  })
+
+  it('方向跟着拉力走：往下拉朝上滚、往左拉往右滚', () => {
+    // 向下拉 → 朝屏幕上方发射 → 绕 +X 滚动
+    expect(rollAxis({ x: 0, y: 100 })).toEqual({ ax: 1, ay: 0 })
+    // 向左拉 → 朝右发射 → 绕 +Y 滚动
+    expect(rollAxis({ x: -100, y: 0 })).toEqual({ ax: 0, ay: 1 })
+    // 向下拉的反方向（向上拉）→ 绕 -X 滚动，方向确实翻转了
+    expect(rollAxis({ x: 0, y: -100 })).toEqual({ ax: -1, ay: 0 })
+  })
+
+  it('不同拉力方向给出不同滚动轴（不再是固定方向）', () => {
+    const axes = [
+      { x: 0, y: 100 },
+      { x: 100, y: 0 },
+      { x: 0, y: -100 },
+      { x: -100, y: 0 },
+    ].map((p) => JSON.stringify(rollAxis(p)))
+    expect(new Set(axes).size).toBe(4)
+  })
+})

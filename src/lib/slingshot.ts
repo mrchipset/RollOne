@@ -39,3 +39,26 @@ export function launchDirection(drag: Vector): Vector {
   return { x: -drag.x / length, y: -drag.y / length }
 }
 
+/**
+ * 滚动轴：骰子朝发射方向在桌面上"纯滚动"时，角速度方向 = 桌面法线 × 发射方向。
+ *
+ * 桌面法线是场景 +Z，发射方向 d = (dx, dy, 0)，于是
+ *   axis = (0,0,1) × (dx, dy, 0) = (-dy, dx, 0)
+ * 代入 dx = -px/L、dy = -py/L（发射方向是拖拽的反方向）得到 (py, -px, 0) / L。
+ *
+ * 效果：往后拉就朝前滚，往左拉就往右滚 —— 翻滚方向跟着投掷方向走。
+ * 返回值恒为单位向量且位于水平面内（z 分量为 0，隐含）。
+ */
+export function rollAxis(pull: Vector): { ax: number; ay: number } {
+  const length = Math.hypot(pull.x, pull.y)
+  if (length === 0) {
+    // 零位移时发射方向是正上方，对应绕 +X 滚动
+    return { ax: 1, ay: 0 }
+  }
+  // 乘除法会产生 -0，它字符串化成 "0" 没问题，但比较时会和 0 不相等，统一归一化
+  return { ax: zeroSafe(pull.y / length), ay: zeroSafe(-pull.x / length) }
+}
+
+function zeroSafe(value: number): number {
+  return value === 0 ? 0 : value
+}

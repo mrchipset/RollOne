@@ -128,16 +128,45 @@ describe('rotateNormal', () => {
 })
 
 describe('cubeTransform', () => {
-  it('位移在前、旋转三轴顺序固定', () => {
-    const transform = cubeTransform({ x: 12, y: -3, z: 40 }, { rx: 90, ry: -90, rz: 0 })
+  const restSpin = { ax: 1, ay: 0, deg: 0 }
+
+  it('函数列表顺序固定：位移 → rotate3d → 落地姿态三轴', () => {
+    const transform = cubeTransform({ x: 12, y: -3, z: 40 }, { rx: 90, ry: -90, rz: 0 }, restSpin)
     expect(transform).toBe(
-      'translate3d(12px, -3px, 40px) rotateY(-90deg) rotateX(90deg) rotateZ(0deg)',
+      'translate3d(12px, -3px, 40px) rotate3d(1, 0, 0, 0deg) ' +
+        'rotateY(-90deg) rotateX(90deg) rotateZ(0deg)',
     )
   })
 
   it('位移保留两位小数，避免逐帧微抖动写出超长字符串', () => {
-    expect(cubeTransform({ x: 1.23456, y: 0, z: 0 }, { rx: 0, ry: 0, rz: 0 })).toContain(
-      'translate3d(1.23px, 0px, 0px)',
+    const transform = cubeTransform({ x: 1.23456, y: 0, z: 0 }, { rx: 0, ry: 0, rz: 0 }, restSpin)
+    expect(transform).toContain('translate3d(1.23px, 0px, 0px)')
+  })
+
+  it('滚动轴按原样写进 rotate3d，任意方向都保留足够精度', () => {
+    const axis = { ax: Math.SQRT1_2, ay: -Math.SQRT1_2, deg: 720 }
+    const transform = cubeTransform({ x: 0, y: 0, z: 0 }, { rx: 0, ry: 0, rz: 0 }, axis)
+    expect(transform).toContain('rotate3d(0.707107, -0.707107, 0, 720deg)')
+  })
+
+  it('依次调用时 rotate3d 排在落地姿态之前，两者的角度互不干扰', () => {
+    const transform = cubeTransform(
+      { x: 0, y: 0, z: 0 },
+      { rx: 90, ry: 180, rz: 0 },
+      { ax: 0, ay: 1, deg: 1080 },
     )
+    expect(transform.indexOf('rotate3d')).toBeLessThan(transform.indexOf('rotateY'))
+    expect(transform).toContain('rotate3d(0, 1, 0, 1080deg)')
+    expect(transform).toContain('rotateY(180deg) rotateX(90deg) rotateZ(0deg)')
+  })
+})
+
+describe('RollSpin 静止语义', () => {
+  it('deg 为 360 的整数倍时，任意轴的 rotate3d 都是等效的（所以换轴、清零不会跳变）', () => {
+    const euler = { rx: 0, ry: 0, rz: 0 }
+    const a = cubeTransform({ x: 0, y: 0, z: 0 }, euler, { ax: 1, ay: 0, deg: 720 })
+    const b = cubeTransform({ x: 0, y: 0, z: 0 }, euler, { ax: 0, ay: 1, deg: 1080 })
+    const stripSpin = (t: string) => t.replace(/rotate3d\([^)]*\)\s*/, '')
+    expect(stripSpin(a)).toBe(stripSpin(b))
   })
 })

@@ -1,9 +1,17 @@
+import { act } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { COLORS, QUESTION_FACE_ID } from './config/colors'
+import { MAX_PULL_PX } from './lib/slingshot'
+import { buildTumblePlan } from './lib/tumble'
 
 const KNOWN_FACE_IDS = [...COLORS.map((c) => c.id), QUESTION_FACE_ID]
+
+/** 从 transform 里剥掉位移，只留旋转部分，用于判断姿态有没有变化。 */
+function rotationOf(transform: string): string {
+  return transform.replace(/^translate3d\([^)]*\)\s*/, '')
+}
 
 function drag(
   stage: HTMLElement,
@@ -123,5 +131,60 @@ describe('App', () => {
 
     expect(screen.queryByRole('button', { name: '投掷中…' })).not.toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent(/^结果：/)
+  })
+
+  it('翻滚只在起飞段发生：回落段的姿态角与起飞段结束时完全一致', () => {
+    vi.useFakeTimers()
+    try {
+      render(<App />)
+      const stage = screen.getByTestId('dice-stage')
+
+      // 拖满力度
+      const pull = MAX_PULL_PX + 40
+      fireEvent.pointerDown(stage, { pointerId: 1, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(stage, { pointerId: 1, clientX: 0, clientY: pull })
+      fireEvent.pointerUp(stage, { pointerId: 1, clientX: 0, clientY: pull })
+
+      const plan = buildTumblePlan(1)
+      const cube = screen.getByTestId('dice')
+
+      act(() => {
+        vi.advanceTimersByTime(plan.flyMs)
+      })
+      const afterFly = rotationOf(cube.style.transform)
+      const offsetAfterFly = cube.style.transform
+
+      act(() => {
+        vi.advanceTimersByTime(plan.settleMs)
+      })
+      const afterSettle = rotationOf(cube.style.transform)
+
+      expect(afterFly).not.toBe('')
+      // 回落段不再转：姿态角必须原地不动
+      expect(afterSettle).toBe(afterFly)
+      // 但位移确实回到了中央（说明回落段本身还在，只是不转）
+      expect(offsetAfterFly).toContain('translate3d')
+      expect(cube.style.transform).toContain('translate3d(0px, 0px, 0px)')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('往后拉就朝前滚：滚动轴绕 +X', () => {
+    render(<App />)
+    const stage = screen.getByTestId('dice-stage')
+
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 100, clientY: 240 })
+    expect(screen.getByTestId('dice').style.transform).toContain('rotate3d(1, 0, 0,')
+  })
+
+  it('往左拉就往右滚：滚动轴绕 +Y（与往后拉不同）', () => {
+    render(<App />)
+    const stage = screen.getByTestId('dice-stage')
+
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: -40, clientY: 100 })
+    expect(screen.getByTestId('dice').style.transform).toContain('rotate3d(0, 1, 0,')
   })
 })

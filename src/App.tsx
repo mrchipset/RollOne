@@ -3,7 +3,7 @@ import { AnimationToggle } from './components/AnimationToggle'
 import { Dice3D } from './components/Dice3D'
 import { COLORS } from './config/colors'
 import { initialAnimationEnabled, writeAnimationPreference } from './lib/animationPreference'
-import { cubeTransform, faceIndexToLandingEuler, type Euler } from './lib/cube'
+import { cubeTransform, faceIndexToLandingEuler, type Euler, type RollSpin } from './lib/cube'
 import { randomUint32 } from './lib/random'
 import { buildFaces, faceLabel, pickIndex, type Face } from './lib/roll'
 import { deriveSeed, mulberry32 } from './lib/seededRandom'
@@ -15,9 +15,17 @@ import {
   isThrowable,
   launchDirection,
   pullFromDrag,
+  rollAxis,
   type Vector,
 } from './lib/slingshot'
-import { EASE_FLY, EASE_SETTLE, RELEASE_MS, buildTumblePlan, flightOffset } from './lib/tumble'
+import {
+  EASE_FLY,
+  EASE_RETURN,
+  EASE_SETTLE,
+  RELEASE_MS,
+  buildTumblePlan,
+  flightOffset,
+} from './lib/tumble'
 
 type Phase = 'idle' | 'dragging' | 'flying' | 'settling'
 
@@ -30,6 +38,9 @@ const DRAG_TILT_DEG = 16
 
 const REST_SHADOW_OPACITY = 0.32
 const FLIGHT_SHADOW_OPACITY = 0.14
+
+/** 初始滚动状态：绕 +X 轴、累计 0 度（0 度即没有旋转）。 */
+const INITIAL_SPIN: RollSpin = { ax: 1, ay: 0, deg: 0 }
 
 type Visual = {
   transform: string
@@ -53,9 +64,9 @@ function shadowTransformAt(x: number, y: number, scale: number): string {
   )
 }
 
-function restVisual(slot: number, transitionMs = 0, easing = EASE_SETTLE): Visual {
+function restVisual(euler: Euler, spin: RollSpin, transitionMs = 0, easing = EASE_SETTLE): Visual {
   return {
-    transform: cubeTransform({ x: 0, y: 0, z: 0 }, faceIndexToLandingEuler(slot)),
+    transform: cubeTransform({ x: 0, y: 0, z: 0 }, euler, spin),
     transitionMs,
     easing,
     shadowTransform: shadowTransformAt(0, 0, 1),
@@ -92,12 +103,13 @@ function App() {
 
   const [topSlot, setTopSlot] = useState(boot.slot)
   const [phase, setPhase] = useState<Phase>('idle')
-  const [visual, setVisual] = useState<Visual>(() => restVisual(boot.slot))
+  const [visual, setVisual] = useState<Visual>(() => restVisual(boot.pose, INITIAL_SPIN))
   const [animationEnabled, setAnimationEnabled] = useState(() => initialAnimationEnabled())
 
-  /** 当前静止姿态（含累计整圈数），拖拽时以它为基准叠加倾斜。 */
+  /** 当前静止姿态（落地欧拉角），拖拽时以它为基准叠加倾斜。 */
   const poseRef = useRef<Euler>(boot.pose)
-  const turnsRef = useRef(0)
+  /** 累计滚动状态。静止时 deg 是 360 的整数倍，等效于没转，所以换轴不会有跳变。 */
+  const spinRef = useRef<RollSpin>(INITIAL_SPIN)
   const dragStartRef = useRef<Vector | null>(null)
   const dragRef = useRef<Vector>({ x: 0, y: 0 })
   const flyTimer = useRef<number | null>(null)
@@ -119,41 +131,27 @@ function App() {
     (force: number, direction: Vector) => {
       // 拉力参与种子，但混入本次投掷新取的 CSPRNG 熵 —— 所以每个面仍然严格等概率
       const targetSlot = pickIndex(faces.length, mulberry32(deriveSeed(force, randomUint32())))
+      const landing = faceIndexToLandingEuler(targetSlot)
+      poseRef.current = landing
 
       if (!animationEnabled) {
-        const pose = faceIndexToLandingEuler(targetSlot)
-        poseRef.current = pose
         setTopSlot(targetSlot)
         setPhase('idle')
-        setVisual(restVisual(targetSlot))
+        setVisual(restVisual(landing, spinRef.current))
         return
       }
 
       const plan = buildTumblePlan(force)
-      const turns = turnsRef.current + plan.flySpins + plan.settleSpins
-      turnsRef.current = turns
-
-      const base = faceIndexToLandingEuler(targetSlot)
-      // 三轴同时加 360° 整圈：模 360 等价于落地姿态，但插值时会真的转起来。
-      // 起飞段先转掉大部分，回落段再补最后一圈 —— 摊开后峰值角速度显著低于全挤在起飞段。
-      const settledTurns = turns - plan.settleSpins
-      const midPose: Euler = {
-        rx: base.rx + 360 * settledTurns,
-        ry: base.ry + 360 * settledTurns,
-        rz: base.rz + 360 * settledTurns,
-      }
-      const finalPose: Euler = {
-        rx: base.rx + 360 * turns,
-        ry: base.ry + 360 * turns,
-        rz: base.rz + 360 * turns,
-      }
-      poseRef.current = finalPose
+      // 绕「投掷方向决定的滚动轴」累计整圈：同样力度下模 360 等价于落地姿态，
+      // 但插值时是真的沿投掷方向滚动。翻滚全部在起飞段完成，回落段只平移。
+      spinRef.current = { ...spinRef.current, deg: spinRef.current.deg + 360 * plan.spins }
+      const spin = spinRef.current
 
       const offset = flightOffset(direction, plan)
 
       setPhase('flying')
       setVisual({
-        transform: cubeTransform({ x: offset.x, y: offset.y, z: plan.liftPx }, midPose),
+        transform: cubeTransform({ x: offset.x, y: offset.y, z: plan.liftPx }, landing, spin),
         transitionMs: plan.flyMs,
         easing: EASE_FLY,
         shadowTransform: shadowTransformAt(offset.x, offset.y, 0.62),
@@ -166,9 +164,9 @@ function App() {
         flyTimer.current = null
         setPhase('settling')
         setVisual({
-          transform: cubeTransform({ x: 0, y: 0, z: 0 }, finalPose),
+          transform: cubeTransform({ x: 0, y: 0, z: 0 }, landing, spin),
           transitionMs: plan.settleMs,
-          easing: EASE_SETTLE,
+          easing: EASE_RETURN,
           shadowTransform: shadowTransformAt(0, 0, 1),
           shadowOpacity: REST_SHADOW_OPACITY,
           shadowTransitionMs: plan.settleMs,
@@ -191,7 +189,7 @@ function App() {
     dragRef.current = { x: 0, y: 0 }
     setPhase('idle')
     setVisual({
-      transform: cubeTransform({ x: 0, y: 0, z: 0 }, poseRef.current),
+      transform: cubeTransform({ x: 0, y: 0, z: 0 }, poseRef.current, spinRef.current),
       transitionMs,
       easing: EASE_SETTLE,
       shadowTransform: shadowTransformAt(0, 0, 1),
@@ -222,13 +220,21 @@ function App() {
       const pull = pullFromDrag(start, { x: event.clientX, y: event.clientY })
       dragRef.current = pull
 
+      // 滚动轴跟着拉力方向实时更新；此时 deg 是 360 的整数倍，换轴不会有视觉跳变
+      const axis = rollAxis(pull)
+      spinRef.current = { ...spinRef.current, ax: axis.ax, ay: axis.ay }
+
       // 场景被倾斜了 45°，屏幕纵向位移要除以 cos 才能让骰子精确跟手
       const sceneX = pull.x
       const sceneY = pull.y / SCENE_COS
 
       setVisual((current) => ({
         ...current,
-        transform: cubeTransform({ x: sceneX, y: sceneY, z: 0 }, tiltedEuler(poseRef.current, pull)),
+        transform: cubeTransform(
+          { x: sceneX, y: sceneY, z: 0 },
+          tiltedEuler(poseRef.current, pull),
+          spinRef.current,
+        ),
         shadowTransform: shadowTransformAt(sceneX, sceneY, 1),
       }))
     },
@@ -247,6 +253,10 @@ function App() {
         resetToRest(RELEASE_MS)
         return
       }
+
+      // 用松手瞬间的拉力定轴，保证翻滚方向与投掷方向一致
+      const axis = rollAxis(pull)
+      spinRef.current = { ...spinRef.current, ax: axis.ax, ay: axis.ay }
 
       launch(forceFromDistance(distance), launchDirection(pull))
     },
