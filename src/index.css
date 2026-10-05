@@ -16,31 +16,79 @@ body {
   overscroll-behavior: none;
 }
 
-@keyframes roll-jiggle {
-  0%,
-  100% {
-    transform: translateY(0) rotate(-2.5deg) scale(1);
-  }
-  50% {
-    transform: translateY(-12px) rotate(2.5deg) scale(1.04);
-  }
+/* ───────────────────────  3D 骰子  ─────────────────────── */
+
+.dice-stage {
+  --cube-size: min(44vw, 11rem);
+  position: relative;
+  width: min(96vw, 30rem);
+  height: min(96vw, 30rem);
+  perspective: 900px;
+  perspective-origin: 50% 50%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
 }
 
-@keyframes face-pop {
-  0% {
-    transform: scale(0.9);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+.dice-stage--dragging {
+  cursor: grabbing;
 }
 
-.dice-rolling {
-  animation: roll-jiggle 400ms ease-in-out infinite;
+/*
+ * 俯视倾角。场景的 +Z 才是桌面法线（骰子顶面朝向），
+ * 而 CSS 里名为 top 的面法向是 -Y（屏幕上方向）——两者不是一回事。
+ * 落地姿态表按 +Z 推导，见 src/lib/cube.ts。
+ */
+.dice-scene {
+  position: absolute;
+  inset: 0;
+  transform: rotateX(45deg);
+  transform-style: preserve-3d;
+  display: grid;
+  place-items: center;
 }
 
-.dice-settled {
-  animation: face-pop 420ms ease-out;
+.dice-shadow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--cube-size) * 1.25);
+  height: calc(var(--cube-size) * 1.25);
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.5);
+  filter: blur(12px);
+  transition-property: transform, opacity;
+  transition-timing-function: ease-out;
+}
+
+.dice-cube {
+  position: relative;
+  width: var(--cube-size);
+  height: var(--cube-size);
+  transform-style: preserve-3d;
+  transition-property: transform;
+  transition-timing-function: ease-out;
+  will-change: transform;
+}
+
+.dice-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.dice-face-glyph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  /* 实测「?」字形高度 ≈ 字号的 0.723 倍，故字号 = 0.88 / 0.723 ≈ 1.217 倍面尺寸 */
+  font-size: calc(var(--cube-size) * 1.217);
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { COLORS, QUESTION_FACE_ID } from '../config/colors'
-import { randBelowInSpace } from './random'
+import { randBelowInSpace, randomUint32 } from './random'
 import { buildFaces, choice, faceLabel, pickIndex, rollFace } from './roll'
+import { deriveSeed, mulberry32 } from './seededRandom'
 
 describe('pickIndex', () => {
   it('用注入的随机源决定下标', () => {
@@ -100,3 +101,48 @@ describe('faceLabel', () => {
   })
 })
 
+describe('弹弓种子下的等概率性', () => {
+  it('相同 (力度, 熵) 必然给出相同结果', () => {
+    const faces = buildFaces(COLORS)
+    const a = rollFace(faces, mulberry32(deriveSeed(0.42, 12345)))
+    const b = rollFace(faces, mulberry32(deriveSeed(0.42, 12345)))
+    expect(a.id).toBe(b.id)
+  })
+
+  it('同一熵、不同力度会给出多个不同结果 —— 拉力真实参与决定', () => {
+    const faces = buildFaces(COLORS)
+    const results = new Set(
+      Array.from({ length: 50 }, (_, i) =>
+        rollFace(faces, mulberry32(deriveSeed(i / 49, 987654321))).id,
+      ),
+    )
+    expect(results.size).toBeGreaterThan(3)
+  })
+
+  it('同一力度、不同熵也能覆盖全部结果 —— 不是"同力度必出同结果"', () => {
+    const faces = buildFaces(COLORS)
+    const seen = new Set<string>()
+
+    for (let i = 0; i < 5000; i += 1) {
+      seen.add(rollFace(faces, mulberry32(deriveSeed(0.8, randomUint32()))).id)
+    }
+
+    expect(seen.size).toBe(faces.length)
+  })
+
+  it('覆盖多种力度时，各面频次仍在 ±3% 内（混入熵后不破坏等概率）', () => {
+    const faces = buildFaces(COLORS)
+    const counts = new Map<string, number>()
+    const total = 30_000
+
+    for (let i = 0; i < total; i += 1) {
+      const force = (i % 97) / 96
+      const face = rollFace(faces, mulberry32(deriveSeed(force, randomUint32())))
+      counts.set(face.id, (counts.get(face.id) ?? 0) + 1)
+    }
+
+    for (const id of [...COLORS.map((c) => c.id), QUESTION_FACE_ID]) {
+      expect(Math.abs((counts.get(id) ?? 0) / total - 1 / faces.length)).toBeLessThan(0.03)
+    }
+  })
+})

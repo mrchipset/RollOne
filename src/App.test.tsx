@@ -5,44 +5,88 @@ import { COLORS, QUESTION_FACE_ID } from './config/colors'
 
 const KNOWN_FACE_IDS = [...COLORS.map((c) => c.id), QUESTION_FACE_ID]
 
+function drag(
+  stage: HTMLElement,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): void {
+  fireEvent.pointerDown(stage, { pointerId: 1, clientX: from.x, clientY: from.y })
+  fireEvent.pointerMove(stage, { pointerId: 1, clientX: to.x, clientY: to.y })
+  fireEvent.pointerUp(stage, { pointerId: 1, clientX: to.x, clientY: to.y })
+}
+
 describe('App', () => {
   it('初始就展示一个合法结果与配置信息', () => {
     render(<App />)
 
-    const dice = screen.getByTestId('dice')
-    expect(KNOWN_FACE_IDS).toContain(dice.getAttribute('data-face-id'))
+    expect(KNOWN_FACE_IDS).toContain(screen.getByTestId('dice').getAttribute('data-face-id'))
     expect(
-      screen.getByText(`共 ${COLORS.length + 1} 种等概率结果 · ${COLORS.length} 种颜色 + 1 个问号`),
+      screen.getByText(
+        `拖住骰子向后拉再松手 · ${COLORS.length} 种颜色 + 1 个问号，共 ${COLORS.length + 1} 种等概率结果`,
+      ),
     ).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/^结果：/)
   })
 
-  it('投掷期间禁用按钮，结束后定格在合法结果', async () => {
+  it('拖拽时骰子跟手，纵向位移按俯视倾角做了 cos 补偿', () => {
+    render(<App />)
+    const stage = screen.getByTestId('dice-stage')
+
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 100, clientY: 100 })
+    expect(screen.getByTestId('dice')).toHaveAttribute('data-dragging', 'true')
+
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 100, clientY: 220 })
+
+    const match = /translate3d\((?<x>[-\d.]+)px, (?<y>[-\d.]+)px/.exec(
+      screen.getByTestId('dice').style.transform,
+    )
+    // 屏幕位移 120px，场景倾斜 45°，纵向要放大到 120 / cos45° ≈ 169.7px 才跟得住手指
+    expect(Number(match?.groups?.y)).toBeGreaterThan(120)
+    expect(screen.getByRole('status')).toHaveTextContent('松手发射')
+  })
+
+  it('拉远后松手会触发投掷', () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: '投掷骰子' }))
+    drag(screen.getByTestId('dice-stage'), { x: 100, y: 100 }, { x: 100, y: 260 })
 
     expect(screen.getByRole('button', { name: '投掷中…' })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('投掷中…')
+  })
+
+  it('拉动距离不足阈值时松手回弹，不触发投掷', () => {
+    render(<App />)
+    const stage = screen.getByTestId('dice-stage')
+
+    drag(stage, { x: 100, y: 100 }, { x: 103, y: 103 })
+
+    expect(screen.getByTestId('dice')).toHaveAttribute('data-dragging', 'false')
+    expect(screen.getByRole('button', { name: '投掷骰子' })).toBeEnabled()
+    expect(screen.getByRole('status')).toHaveTextContent(/^结果：/)
+  })
+
+  it('拖拽后动画结束会定格在合法结果', async () => {
+    render(<App />)
+
+    // 用较轻的拉力（30px ≈ 力度 0.21），整段动画约 4.4s，比满力度短一半
+    drag(screen.getByTestId('dice-stage'), { x: 100, y: 100 }, { x: 100, y: 130 })
 
     await waitFor(
       () => {
         expect(screen.getByRole('button', { name: '投掷骰子' })).toBeEnabled()
       },
-      { timeout: 5000 },
+      { timeout: 9000 },
     )
 
     const dice = screen.getByTestId('dice')
+    const slot = Number(dice.getAttribute('data-top-slot'))
+    expect(slot).toBeGreaterThanOrEqual(0)
+    expect(slot).toBeLessThan(COLORS.length + 1)
     expect(KNOWN_FACE_IDS).toContain(dice.getAttribute('data-face-id'))
     expect(screen.getByRole('status')).toHaveTextContent(/^结果：/)
   })
 
-  it('问号面才显示问号字样', () => {
-    render(<App />)
-    const dice = screen.getByTestId('dice')
-    const isQuestion = dice.getAttribute('data-face-kind') === 'question'
-    expect(dice).toHaveTextContent(isQuestion ? '?' : '')
-  })
-
-  it('默认开启动画，投掷时会进入投掷中状态', () => {
+  it('默认开启动画，用按钮投掷时会进入投掷中状态', () => {
     render(<App />)
 
     expect(screen.getByRole('switch', { name: '投掷动画' })).toHaveAttribute(
@@ -70,5 +114,14 @@ describe('App', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/^结果：/)
     expect(KNOWN_FACE_IDS).toContain(screen.getByTestId('dice').getAttribute('data-face-id'))
   })
-})
 
+  it('关闭动画后拖拽发射同样立即出结果', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('switch', { name: '投掷动画' }))
+    drag(screen.getByTestId('dice-stage'), { x: 100, y: 100 }, { x: 100, y: 260 })
+
+    expect(screen.queryByRole('button', { name: '投掷中…' })).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/^结果：/)
+  })
+})
