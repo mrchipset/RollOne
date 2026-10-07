@@ -10,6 +10,16 @@
 
 需求演变与开发指令记录在 [`prompt.md`](./prompt.md)。
 
+## 演示
+![演示](resources/screenshot.png)
+
+- [resources/screenshot.png](resources/screenshot.png) —— 界面截图，499×944
+- [resources/demo.mp4](resources/demo.mp4) —— 演示视频，16 秒 / 496×1080 / 30fps
+
+> GitHub 的 Markdown 会过滤 `<video>` 标签，所以在 GitHub 上请直接点开 `resources/demo.mp4`；
+> VS Code、GitLab、Gitea 的 Markdown 预览里可以直接播放。
+> ⚠️ 视频是 **HEVC（H.265）** 编码，Chrome / Firefox 播不了，只有 Safari 能直接播——见「已知问题」。
+
 ## 常用命令
 
 ```bash
@@ -254,8 +264,8 @@ spins    = 2                                          // 固定 2 圈
 - `label` 是结果播报里显示的中文名（`aria-live` 会念出来，也是色盲用户唯一的区分手段）
 - `color` 必须是 `#RGB` / `#RRGGBB` 等合法十六进制颜色
 
-默认 5 色是从实体教具照片里做像素采样得到的（受光面众数）：
-红 `#BB3A3C`、橙 `#AD692A`、黄 `#EACB26`、绿 `#335D2C`、紫 `#7F7099`。
+默认调色板见 `src/config/colors.ts` 里的 `COLORS`。这里刻意不复制具体的十六进制值——
+调色板会被反复微调，写死在文档里必然过期。
 
 ## 浏览器与设备要求
 
@@ -274,9 +284,25 @@ spins    = 2                                          // 固定 2 圈
 两段的**比例**；只有 `TIME_SCALE = 1` 时两段才严格按 `FLY_SHARE` 划分。若这是有意的，
 保持现状即可；若想恢复全局语义，需要给 `settleMs` 补上乘数。
 
+**演示视频是 HEVC（H.265）编码。** Chrome / Firefox 不支持这个编码，只有 Safari 能播，
+而 GitHub 又会过滤 `<video>` 标签——两者叠加的结果是：多数人点开 `resources/demo.mp4`
+只能下载、不能直接看。两条修法：
+
+```bash
+# 转成浏览器通吃的 H.264（体积会涨一些，可加 -crf 28 压一压）
+ffmpeg -i resources/demo.mp4 -c:v libx264 -pix_fmt yuv420p -movflags +faststart resources/demo-h264.mp4
+```
+
+或者截取前几秒做成 GIF——GIF 到处都能内联播放，但 16 秒的视频转 GIF 会有好几 MB，
+建议只截一段关键动作。
+
 ## 技术栈
 
 TypeScript · React 19 · Vite 8 · Tailwind CSS 4（`@tailwindcss/vite`，CSS-first）·
 Vitest 5 + Testing Library · pnpm（淘宝镜像，见 `.npmrc`）
 
 3D 用纯 CSS（`perspective` + `transform-style: preserve-3d`），没有 three.js 之类的依赖。
+
+## 许可证
+
+[MIT](./LICENSE) © 2026 zouyu
