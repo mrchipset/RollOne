@@ -11,12 +11,10 @@
 需求演变与开发指令记录在 [`prompt.md`](./prompt.md)。
 
 ## 演示
-<p align="center">
-  <video src="resources/demo.mp4" width="300" controls muted loop playsinline></video>
-</p>
+![演示](resources/screenshot.png)
 
-- `resources/screenshot.png` —— 界面截图，499×944
-- `resources/demo.mp4` —— 演示视频，16 秒 / 496×1080 / 30fps
+- [resources/screenshot.png](resources/screenshot.png) —— 界面截图，499×944
+- [resources/demo.mp4](resources/demo.mp4) —— 演示视频，16 秒 / 496×1080 / 30fps
 
 > GitHub 的 Markdown 会过滤 `<video>` 标签，所以在 GitHub 上请直接点开 `resources/demo.mp4`；
 > VS Code、GitLab、Gitea 的 Markdown 预览里可以直接播放。
@@ -304,3 +302,7 @@ TypeScript · React 19 · Vite 8 · Tailwind CSS 4（`@tailwindcss/vite`，CSS-f
 Vitest 5 + Testing Library · pnpm（淘宝镜像，见 `.npmrc`）
 
 3D 用纯 CSS（`perspective` + `transform-style: preserve-3d`），没有 three.js 之类的依赖。
+
+## 许可证
+
+[MIT](./LICENSE) © 2026 zouyu
